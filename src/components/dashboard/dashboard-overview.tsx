@@ -40,7 +40,7 @@ export function DashboardOverview() {
           agentsTotal: agentsRes.data.total,
           feishuAccounts: systemRes.data.channels.feishu.accounts.length,
           memorySections: memoryRes.data.stats?.sections || 0,
-          memoryLastUpdated: memoryRes.data.metadata?.lastUpdated,
+          memoryLastUpdated: memoryRes.data.metadata?.lastUpdated ?? null,
           gatewayMode: systemRes.data.gateway.mode,
           isLoading: false,
           error: null,

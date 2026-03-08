@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { join, dirname } from "path";
 
+export const dynamic = "force-dynamic";
+
 interface CalendarEvent {
   id: string;
   title: string;
@@ -64,33 +66,40 @@ async function writeCalendarFile(data: CalendarData) {
   await writeFile(CALENDAR_FILE_PATH, content, "utf-8");
 }
 
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
 // GET - 读取日程（支持日期筛选）
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const date = searchParams.get("date");
     const type = searchParams.get("type");
-    
+
     const data = await readCalendarFile();
-    
     let events = data.events;
-    
+
     // 日期筛选（格式：YYYY-MM-DD）
     if (date) {
       events = events.filter(e => e.startTime.startsWith(date));
     }
-    
+
     // 类型筛选
     if (type && type !== "all") {
       events = events.filter(e => e.type === type);
     }
-    
+
     // 按时间排序
     events.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
-    
+
     return NextResponse.json({
       success: true,
-      data,
+      data: {
+        events: events,
+        meta: data.meta
+      },
     });
   } catch (error) {
     console.error("Failed to read calendar:", error);

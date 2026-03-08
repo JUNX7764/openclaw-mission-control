@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile } from "fs/promises";
 import { join } from "path";
 
+export const dynamic = "force-dynamic";
+
 interface Log {
   id: string;
   level: "INFO" | "WARN" | "ERROR";
@@ -67,27 +69,27 @@ export async function GET(request: NextRequest) {
     const level = searchParams.get("level");
     const subsystem = searchParams.get("subsystem");
     const limit = parseInt(searchParams.get("limit") || "50");
-    
+
     const data = await readLogsFile();
-    
+
     let logs = data.logs;
-    
+
     // 级别筛选
     if (level && level !== "all") {
       logs = logs.filter(l => l.level === level);
     }
-    
+
     // 子系统筛选
     if (subsystem && subsystem !== "all") {
       logs = logs.filter(l => l.subsystem === subsystem);
     }
-    
+
     // 按时间倒序（最新的在前）
     logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    
+
     // 限制数量
     logs = logs.slice(0, limit);
-    
+
     return NextResponse.json({
       success: true,
       data: {
@@ -113,7 +115,7 @@ export async function PUT(request: NextRequest) {
   try {
     const body = await request.json();
     const data = await readLogsFile();
-    
+
     // 更新权限
     if (body.permissions) {
       data.permissions = {
@@ -121,11 +123,11 @@ export async function PUT(request: NextRequest) {
         ...body.permissions,
       };
     }
-    
+
     data.meta.lastUpdated = new Date().toISOString();
-    
+
     await writeLogsFile(data);
-    
+
     return NextResponse.json({
       success: true,
       data: {

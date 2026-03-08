@@ -7,7 +7,7 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { Calendar as CalendarComponent } from "@/components/ui/calendar"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { 
+import {
   Calendar as CalendarIcon,
   Plus,
   Clock,
@@ -55,6 +55,7 @@ export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date())
   const [currentMonth, setCurrentMonth] = useState<Date>(new Date())
   const [isLoading, setIsLoading] = useState(true)
+  const [selectedTypes, setSelectedTypes] = useState<string[]>(Object.keys(typeConfig))
 
   // 加载日程数据
   useEffect(() => {
@@ -65,7 +66,7 @@ export default function CalendarPage() {
     try {
       const res = await fetch("/api/calendar")
       const json = await res.json()
-      
+
       if (json.success) {
         setData(json.data)
       }
@@ -81,18 +82,101 @@ export default function CalendarPage() {
     alert("🚀 日程创建系统即将上线！\n\n未来你将可以：\n- 创建 AI 定时任务（Cron Job）\n- 设置项目里程碑\n- 添加个人日程提醒")
   }
 
-  // 获取选中日期的事件
-  const selectedEvents = data?.events.filter(e => 
-    isSameDay(parseISO(e.startTime), selectedDate)
-  ) || []
+  // 获取选中日期的事件和当月标记的日期
+  const selectedEvents: CalendarEvent[] = [];
+  const eventDates: Date[] = [];
 
-  // 按时间排序
-  selectedEvents.sort((a, b) => 
-    new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
-  )
+  if (data?.events) {
+    // 简化版 cron 匹配器
+    const isCronMatch = (cronExpr: string, date: Date) => {
+      const parts = cronExpr.split(" ");
+      if (parts.length < 5) return false;
+      const [, , dom, mon, dow] = parts;
+      const d = date.getDate();
+      const m = date.getMonth() + 1;
+      const w = date.getDay(); // 0 is Sunday
 
-  // 获取有事件的日期（用于日历标记）
-  const eventDates = data?.events.map(e => parseISO(e.startTime)) || []
+      const match = (field: string, val: number) => {
+        if (field === "*") return true;
+        if (field.includes(",")) return field.split(",").includes(val.toString());
+        if (field.includes("-")) {
+          const [s, e] = field.split("-").map(Number);
+          return val >= s && val <= e;
+        }
+        return Number(field) === val;
+      };
+      return match(dom, d) && match(mon, m) && match(dow, w === 0 && dow.includes("7") ? 7 : w);
+    };
+
+    // 1. 展开选中的那一天 (selectedDate) 的事件
+    for (const e of data.events) {
+      if (!selectedTypes.includes(e.type)) continue;
+
+      if (e.recurring && e.cronExpression) {
+        if (isCronMatch(e.cronExpression, selectedDate)) {
+          const [minStr, hr, , ,] = e.cronExpression.split(" ");
+          const min = Number.isNaN(Number(minStr)) ? 0 : (minStr.includes("/") ? 0 : Number(minStr));
+
+          if (hr.includes(",")) {
+            hr.split(",").map(Number).forEach(h => {
+              const newStart = new Date(selectedDate); newStart.setHours(h, min, 0, 0);
+              const newEnd = new Date(selectedDate); newEnd.setHours(h, min + 15, 0, 0);
+              selectedEvents.push({ ...e, id: `${e.id}-${h}`, startTime: newStart.toISOString(), endTime: newEnd.toISOString() });
+            });
+          } else if (hr.includes("-")) {
+            const [start, end] = hr.split("-").map(Number);
+            for (let h = start; h <= end; h++) {
+              const newStart = new Date(selectedDate); newStart.setHours(h, minStr.includes("/") ? 0 : min, 0, 0);
+              const newEnd = new Date(selectedDate); newEnd.setHours(h, minStr.includes("/") ? 30 : min + 15, 0, 0);
+              selectedEvents.push({ ...e, id: `${e.id}-${h}`, startTime: newStart.toISOString(), endTime: newEnd.toISOString() });
+            }
+          } else if (hr !== "*") {
+            const h = Number(hr);
+            const newStart = new Date(selectedDate); newStart.setHours(h, min, 0, 0);
+            const newEnd = new Date(selectedDate); newEnd.setHours(h, min + 15, 0, 0);
+            selectedEvents.push({ ...e, id: `${e.id}-${h}`, startTime: newStart.toISOString(), endTime: newEnd.toISOString() });
+          } else {
+            const newStart = new Date(selectedDate); newStart.setHours(0, 0, 0, 0);
+            selectedEvents.push({ ...e, startTime: newStart.toISOString(), endTime: newStart.toISOString() });
+          }
+        }
+      } else {
+        if (isSameDay(parseISO(e.startTime), selectedDate)) {
+          selectedEvents.push(e);
+        }
+      }
+    }
+
+    // 按时间排序
+    selectedEvents.sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime());
+
+    // 2. 为了在日历上打点，计算当前显示月份的所有日期
+    const monthStart = startOfWeek(startOfMonth(currentMonth));
+    const monthEnd = endOfWeek(endOfMonth(currentMonth));
+    const allDays = eachDayOfInterval({ start: monthStart, end: monthEnd });
+
+    for (const d of allDays) {
+      let hasEvent = false;
+      for (const e of data.events) {
+        if (!selectedTypes.includes(e.type)) continue;
+
+        if (e.recurring && e.cronExpression) {
+          if (isCronMatch(e.cronExpression, d)) {
+            hasEvent = true;
+            break;
+          }
+        } else {
+          if (isSameDay(parseISO(e.startTime), d)) {
+            hasEvent = true;
+            break;
+          }
+        }
+      }
+      if (hasEvent) {
+        eventDates.push(d);
+      }
+    }
+  }
 
   // 月份导航
   function handlePreviousMonth() {
@@ -141,7 +225,7 @@ export default function CalendarPage() {
         {/* 内容区 */}
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
+
             {/* 左侧：日历组件 */}
             <div className="lg:col-span-4 space-y-4">
               <Card>
@@ -179,7 +263,7 @@ export default function CalendarPage() {
                       event: eventDates
                     }}
                     modifiersStyles={{
-                      event: { 
+                      event: {
                         fontWeight: 'bold',
                         textDecoration: 'underline',
                         textDecorationColor: '#3b82f6'
@@ -195,14 +279,30 @@ export default function CalendarPage() {
                   <CardDescription>事件类型</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  {Object.entries(typeConfig).map(([key, config]) => (
-                    <div key={key} className="flex items-center gap-2 text-sm">
-                      <Badge variant="outline" className={config.color}>
-                        <config.icon className="h-3 w-3 mr-1" />
-                        {config.label}
-                      </Badge>
-                    </div>
-                  ))}
+                  {Object.entries(typeConfig).map(([key, config]) => {
+                    const isSelected = selectedTypes.includes(key);
+                    return (
+                      <div
+                        key={key}
+                        className="flex items-center gap-2 text-sm cursor-pointer select-none transition-opacity hover:opacity-80"
+                        onClick={() => {
+                          setSelectedTypes(prev =>
+                            prev.includes(key)
+                              ? prev.filter(t => t !== key)
+                              : [...prev, key]
+                          )
+                        }}
+                      >
+                        <Badge
+                          variant={isSelected ? "default" : "outline"}
+                          className={`${config.color} ${!isSelected ? "opacity-50 grayscale" : ""}`}
+                        >
+                          <config.icon className="h-3 w-3 mr-1" />
+                          {config.label}
+                        </Badge>
+                      </div>
+                    )
+                  })}
                 </CardContent>
               </Card>
             </div>
@@ -308,7 +408,7 @@ function EventCard({ event }: EventCardProps) {
             <span className="text-lg">{event.agentEmoji || "🤖"}</span>
             <span>{event.agentName}</span>
           </div>
-          
+
           {event.cronExpression && (
             <div className="flex items-center gap-2 text-gray-500">
               <Timer className="h-3 w-3" />

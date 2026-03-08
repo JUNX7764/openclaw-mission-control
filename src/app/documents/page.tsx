@@ -5,16 +5,17 @@ import { AppSidebar } from "@/components/layout/app-sidebar"
 import { Card, CardContent, CardDescription, CardHeader } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Input } from "@/components/ui/input"
-import { 
-  FolderKanban, 
-  Plus, 
+import {
+  FolderKanban,
+  Plus,
   Search,
   FileText,
   Download,
   Eye,
   Clock,
   HardDrive,
-  User
+  User,
+  X
 } from "lucide-react"
 
 interface Document {
@@ -72,6 +73,10 @@ export default function DocumentsPage() {
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
 
+  const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
+  const [previewContent, setPreviewContent] = useState<string>("")
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false)
+
   // 加载文档数据
   useEffect(() => {
     loadDocuments()
@@ -82,10 +87,10 @@ export default function DocumentsPage() {
       const params = new URLSearchParams()
       if (selectedCategory !== "all") params.set("category", selectedCategory)
       if (searchQuery) params.set("search", searchQuery)
-      
+
       const res = await fetch(`/api/documents?${params}`)
       const json = await res.json()
-      
+
       if (json.success) {
         setData(json.data)
       }
@@ -101,9 +106,35 @@ export default function DocumentsPage() {
     alert("🚀 文档导入系统即将上线！\n\n未来你将可以：\n- 上传 Markdown/PDF/Word 文档\n- 自动归类到对应分类\n- 支持拖拽上传\n- 文档版本管理")
   }
 
-  // 预览文档（Toast 预告）
-  function handlePreview(doc: Document) {
-    alert(`📄 预览：${doc.name}\n\n${doc.description}\n\n👤 作者：${doc.authorEmoji || "🤖"} ${doc.author}\n📊 大小：${doc.sizeHuman}\n🕒 更新：${new Date(doc.updatedAt).toLocaleString("zh-CN")}\n🏷️ 标签：${doc.tags?.join(", ") || "无"}`)
+  // 预览文档
+  async function handlePreview(doc: Document) {
+    setPreviewDoc(doc)
+    setIsPreviewLoading(true)
+    setPreviewContent("")
+
+    try {
+      const res = await fetch(`/api/documents/${doc.id}`)
+      if (res.ok) {
+        const json = await res.json()
+        if (json.success) {
+          setPreviewContent(json.data.content || "该文档似乎是空的。")
+        } else {
+          setPreviewContent(`获取内容失败: ${json.error}`)
+        }
+      } else {
+        setPreviewContent("接口请求失败，请稍后再试。")
+      }
+    } catch (error) {
+      console.error("Failed to fetch document preview:", error)
+      setPreviewContent("网络发生异常，无法加载内容。")
+    } finally {
+      setIsPreviewLoading(false)
+    }
+  }
+
+  // 下载文档
+  function handleDownload(doc: Document) {
+    window.open(`/api/documents/${doc.id}/download`, "_blank")
   }
 
   // 筛选文档
@@ -156,7 +187,7 @@ export default function DocumentsPage() {
         {/* 内容区 */}
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
+
             {/* 左侧：分类导航 */}
             <div className="lg:col-span-3 space-y-4">
               {/* 搜索框 */}
@@ -181,15 +212,14 @@ export default function DocumentsPage() {
                       setSelectedCategory("all")
                       loadDocuments()
                     }}
-                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                      selectedCategory === "all"
-                        ? "bg-blue-100 text-blue-700"
-                        : "hover:bg-gray-100 text-gray-700"
-                    }`}
+                    className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedCategory === "all"
+                      ? "bg-blue-100 text-blue-700"
+                      : "hover:bg-gray-100 text-gray-700"
+                      }`}
                   >
                     📂 全部分类
                   </button>
-                  
+
                   {data?.categories.map((category) => {
                     const count = data.documents.filter(d => d.category === category.id).length
                     return (
@@ -199,11 +229,10 @@ export default function DocumentsPage() {
                           setSelectedCategory(category.id)
                           loadDocuments()
                         }}
-                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${
-                          selectedCategory === category.id
-                            ? "bg-blue-100 text-blue-700"
-                            : "hover:bg-gray-100 text-gray-700"
-                        }`}
+                        className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedCategory === category.id
+                          ? "bg-blue-100 text-blue-700"
+                          : "hover:bg-gray-100 text-gray-700"
+                          }`}
                       >
                         <div className="flex items-center justify-between">
                           <span>
@@ -268,6 +297,7 @@ export default function DocumentsPage() {
                           key={doc.id}
                           doc={doc}
                           onPreview={handlePreview}
+                          onDownload={handleDownload}
                         />
                       ))}
                     </div>
@@ -288,6 +318,63 @@ export default function DocumentsPage() {
         <footer className="h-12 border-t bg-white flex items-center justify-center px-6 text-xs text-gray-500">
           <span>💡 提示：文档存储在 ~/.openclaw/workspace/mission-control/docs/</span>
         </footer>
+        {/* 预览弹窗 (Preview Modal) */}
+        {previewDoc && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+              {/* Header */}
+              <div className="flex items-center justify-between px-6 py-4 border-b bg-gray-50/50">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded bg-blue-100 flex items-center justify-center text-lg">
+                    {typeIcons[previewDoc.type] || typeIcons.other}
+                  </div>
+                  <div>
+                    <h3 className="font-semibold text-gray-900">{previewDoc.name}</h3>
+                    <p className="text-xs text-gray-500">
+                      {previewDoc.authorEmoji || "🤖"} {previewDoc.author} · {previewDoc.sizeHuman}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => setPreviewDoc(null)}
+                  className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              {/* Content Area */}
+              <div className="flex-1 overflow-y-auto p-6 bg-white">
+                {isPreviewLoading ? (
+                  <div className="flex flex-col items-center justify-center py-20">
+                    <FolderKanban className="h-8 w-8 animate-spin text-gray-300 mb-4" />
+                    <p className="text-gray-500 text-sm">正在加载文档内容...</p>
+                  </div>
+                ) : (
+                  <div className="prose prose-sm md:prose-base max-w-none text-gray-800">
+                    {/* For simplicity we dump the raw markdown/text into a pre formatted block 
+                          Ideally we would use react-markdown here */}
+                    <pre className="whitespace-pre-wrap font-sans bg-gray-50 p-6 rounded-lg border text-sm leading-relaxed overflow-x-auto">
+                      {previewContent}
+                    </pre>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t bg-gray-50 flex justify-end">
+                <button
+                  onClick={() => handleDownload(previewDoc)}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors shadow-sm"
+                >
+                  <Download className="h-4 w-4" />
+                  下载原文件
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </main>
     </div>
   )
@@ -297,9 +384,10 @@ export default function DocumentsPage() {
 interface DocumentCardProps {
   doc: Document
   onPreview: (doc: Document) => void
+  onDownload: (doc: Document) => void
 }
 
-function DocumentCard({ doc, onPreview }: DocumentCardProps) {
+function DocumentCard({ doc, onPreview, onDownload }: DocumentCardProps) {
   const typeIcon = typeIcons[doc.type] || typeIcons.other
 
   const formatRelativeTime = (dateString: string) => {
@@ -307,7 +395,7 @@ function DocumentCard({ doc, onPreview }: DocumentCardProps) {
     const now = new Date()
     const diff = now.getTime() - date.getTime()
     const hours = Math.floor(diff / (1000 * 60 * 60))
-    
+
     if (hours < 1) return "刚刚"
     if (hours < 24) return `${hours}小时前`
     const days = Math.floor(hours / 24)
@@ -322,7 +410,7 @@ function DocumentCard({ doc, onPreview }: DocumentCardProps) {
           <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xl shrink-0">
             {typeIcon}
           </div>
-          
+
           {/* 文件信息 */}
           <div className="flex-1 min-w-0">
             <h3 className="font-medium text-sm text-gray-900 truncate group-hover:text-blue-600 transition-colors">
@@ -373,7 +461,10 @@ function DocumentCard({ doc, onPreview }: DocumentCardProps) {
               <Eye className="h-3 w-3" />
               预览
             </button>
-            <button className="flex items-center gap-1 text-xs px-2 py-1 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors">
+            <button
+              onClick={() => onDownload(doc)}
+              className="flex items-center gap-1 text-xs px-2 py-1 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+            >
               <Download className="h-3 w-3" />
               下载
             </button>

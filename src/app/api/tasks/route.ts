@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { readFile, writeFile, mkdir } from "fs/promises";
 import { join, dirname } from "path";
 
+export const dynamic = "force-dynamic";
+
 interface Task {
   id: string;
   title: string;

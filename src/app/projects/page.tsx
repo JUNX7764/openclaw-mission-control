@@ -1,16 +1,17 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Link from "next/link"
 import { AppSidebar } from "@/components/layout/app-sidebar"
 import { Card, CardContent, CardHeader, CardDescription } from "@/components/ui/card"
 import { Progress } from "@/components/ui/progress"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { 
-  FolderKanban, 
-  Plus, 
-  TrendingUp, 
-  Clock, 
+import {
+  FolderKanban,
+  Plus,
+  TrendingUp,
+  Clock,
   CheckCircle2,
   AlertCircle,
   Target,
@@ -55,7 +56,7 @@ export default function ProjectsPage() {
       const params = filter !== "all" ? `?status=${filter}` : ""
       const res = await fetch(`/api/projects${params}`)
       const json = await res.json()
-      
+
       if (json.success) {
         setData(json.data)
       }
@@ -69,18 +70,6 @@ export default function ProjectsPage() {
   // 创建新项目（Toast 预告）
   function handleCreateProject() {
     alert("🚀 项目创建系统即将上线！\n\n未来你将可以：\n- 创建新项目并设定目标\n- 分配负责人（Agent）\n- 关联任务看板中的任务\n- 追踪项目进度")
-  }
-
-  // 点击项目卡片
-  function handleProjectClick(project: Project) {
-    const statusLabels = {
-      active: "🟢 进行中",
-      urgent: "🟡 用力推进",
-      "at-risk": "🔴 存在风险",
-      archived: "⚪ 已归档",
-    }
-
-    alert(`📁 ${project.name}\n\n${project.description}\n\n👤 负责人：${project.ownerEmoji || "🤖"} ${project.ownerName}\n📊 进度：${project.progress}%\n️ 状态：${statusLabels[project.status]}\n📅 创建：${new Date(project.createdAt).toLocaleDateString("zh-CN")}\n🔗 关联任务：${project.taskIds.length} 个`)
   }
 
   // 刷新数据
@@ -150,7 +139,7 @@ export default function ProjectsPage() {
         {/* 内容区 */}
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-7xl mx-auto space-y-6">
-            
+
             {/* 状态筛选器 */}
             <Tabs value={filter} onValueChange={(v) => setFilter(v as any)} className="w-full">
               <TabsList className="grid w-full max-w-md grid-cols-3">
@@ -164,12 +153,12 @@ export default function ProjectsPage() {
             {filteredProjects.length > 0 ? (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {filteredProjects.map((project) => (
-                  <ProjectCard
-                    key={project.id}
-                    project={project}
-                    statusConfig={statusConfig}
-                    onClick={handleProjectClick}
-                  />
+                  <Link key={project.id} href={`/projects/${project.id}`}>
+                    <ProjectCard
+                      project={project}
+                      statusConfig={statusConfig}
+                    />
+                  </Link>
                 ))}
               </div>
             ) : (
@@ -195,16 +184,14 @@ export default function ProjectsPage() {
 interface ProjectCardProps {
   project: Project
   statusConfig: Record<string, { label: string; color: string; icon: string }>
-  onClick: (project: Project) => void
 }
 
-function ProjectCard({ project, statusConfig, onClick }: ProjectCardProps) {
+function ProjectCard({ project, statusConfig }: ProjectCardProps) {
   const status = statusConfig[project.status] || statusConfig.active
 
   return (
-    <Card 
-      className="group cursor-pointer transition-all duration-200 hover:-translate-y-1 hover:shadow-lg border-gray-200 bg-white"
-      onClick={() => onClick(project)}
+    <Card
+      className="group h-full transition-all duration-200 hover:-translate-y-1 hover:shadow-lg border-gray-200 bg-white"
     >
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
