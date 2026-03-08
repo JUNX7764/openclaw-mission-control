@@ -1,0 +1,8 @@
+{
+    "id": "mission-control-logger",
+    "configSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+    }
+}

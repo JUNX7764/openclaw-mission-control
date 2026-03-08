@@ -1,0 +1,11 @@
+{
+    "name": "mission-control-execution",
+    "version": "1.0.0",
+    "description": "Provides execution feedback by updating Tasks automatically on the Mission Control dashboard.",
+    "type": "module",
+    "openclaw": {
+        "extensions": [
+            "./index.js"
+        ]
+    }
+}

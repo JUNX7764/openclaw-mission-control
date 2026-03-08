@@ -1,0 +1,8 @@
+{
+    "id": "mission-control-execution",
+    "configSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+    }
+}
