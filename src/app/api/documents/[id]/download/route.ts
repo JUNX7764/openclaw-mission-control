@@ -1,50 +1,46 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readFile, stat } from "fs/promises";
-import { join } from "path";
-import mime from "mime"; // You can use mime-types or raw determination
+import { basename, extname } from "path";
 
 export const dynamic = "force-dynamic";
 
 const HOME_DIR = process.env.HOME || "~";
-const DOCUMENTS_JSON_PATH = join(HOME_DIR, ".openclaw/workspace/mission-control/data/documents.json");
-const DOCS_ROOT = join(HOME_DIR, ".openclaw/workspace/mission-control/docs");
+const SCAN_ROOT = `${HOME_DIR}/.openclaw`;
+
+function decodeId(id: string): string {
+    return Buffer.from(id, "base64url").toString("utf-8");
+}
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> } // Next.js 15+ promise signature
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id } = await params;
+        const filePath = decodeId(id);
 
-        // 1. Read metadata from JSON
-        const jsonContent = await readFile(DOCUMENTS_JSON_PATH, "utf-8");
-        const data = JSON.parse(jsonContent);
-        const docMeta = data.documents.find((d: any) => d.id === id);
-
-        if (!docMeta) {
-            return new NextResponse("Document entry not found", { status: 404 });
+        // Security: ensure the resolved path is within the allowed scan root
+        if (!filePath.startsWith(SCAN_ROOT)) {
+            return new NextResponse("Access denied.", { status: 403 });
         }
-
-        // 2. Verify physical file exists and read its buffer
-        const physicalPath = join(DOCS_ROOT, docMeta.category, docMeta.name);
 
         try {
-            await stat(physicalPath); // ensure it exists
-        } catch (e) {
-            return new NextResponse("Physical file not found on disk", { status: 404 });
+            await stat(filePath);
+        } catch {
+            return new NextResponse("File not found.", { status: 404 });
         }
 
-        const fileBuffer = await readFile(physicalPath);
+        const fileBuffer = await readFile(filePath);
+        const name = basename(filePath);
+        const ext = extname(filePath).toLowerCase();
 
-        // 3. Determine mimetype
         let contentType = "application/octet-stream";
-        if (docMeta.name.endsWith(".md")) contentType = "text/markdown; charset=utf-8";
-        if (docMeta.name.endsWith(".pdf")) contentType = "application/pdf";
-        if (docMeta.name.endsWith(".txt")) contentType = "text/plain; charset=utf-8";
+        if (ext === ".md") contentType = "text/markdown; charset=utf-8";
+        else if (ext === ".pdf") contentType = "application/pdf";
+        else if (ext === ".txt") contentType = "text/plain; charset=utf-8";
 
-        // 4. Return the standard Http Response with Content-Disposition headers to trigger download behavior
         const headers = new Headers();
-        headers.append("Content-Disposition", `attachment; filename="${encodeURIComponent(docMeta.name)}"`);
+        headers.append("Content-Disposition", `attachment; filename="${encodeURIComponent(name)}"`);
         headers.append("Content-Type", contentType);
 
         return new NextResponse(fileBuffer, { headers });

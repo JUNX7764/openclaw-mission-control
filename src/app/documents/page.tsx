@@ -71,6 +71,7 @@ export default function DocumentsPage() {
   const [data, setData] = useState<DocumentsData | null>(null)
   const [isLoading, setIsLoading] = useState(true)
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
+  const [selectedAgent, setSelectedAgent] = useState<string>("all")
   const [searchQuery, setSearchQuery] = useState("")
 
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null)
@@ -84,11 +85,7 @@ export default function DocumentsPage() {
 
   async function loadDocuments() {
     try {
-      const params = new URLSearchParams()
-      if (selectedCategory !== "all") params.set("category", selectedCategory)
-      if (searchQuery) params.set("search", searchQuery)
-
-      const res = await fetch(`/api/documents?${params}`)
+      const res = await fetch(`/api/documents`)
       const json = await res.json()
 
       if (json.success) {
@@ -137,9 +134,19 @@ export default function DocumentsPage() {
     window.open(`/api/documents/${doc.id}/download`, "_blank")
   }
 
+  // 计算动态 Agents
+  const agentsMap = new Map<string, string>()
+  data?.documents.forEach(d => {
+    if (d.author && !agentsMap.has(d.author)) {
+      agentsMap.set(d.author, d.authorEmoji || "🤖")
+    }
+  })
+  const agents = Array.from(agentsMap.entries()).map(([name, emoji]) => ({ name, emoji }))
+
   // 筛选文档
   const filteredDocuments = data?.documents.filter(d => {
     if (selectedCategory !== "all" && d.category !== selectedCategory) return false
+    if (selectedAgent !== "all" && d.author !== selectedAgent) return false
     if (searchQuery) {
       const query = searchQuery.toLowerCase()
       return d.name.toLowerCase().includes(query) ||
@@ -208,10 +215,7 @@ export default function DocumentsPage() {
                 </CardHeader>
                 <CardContent className="space-y-2">
                   <button
-                    onClick={() => {
-                      setSelectedCategory("all")
-                      loadDocuments()
-                    }}
+                    onClick={() => setSelectedCategory("all")}
                     className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedCategory === "all"
                       ? "bg-blue-100 text-blue-700"
                       : "hover:bg-gray-100 text-gray-700"
@@ -225,10 +229,7 @@ export default function DocumentsPage() {
                     return (
                       <button
                         key={category.id}
-                        onClick={() => {
-                          setSelectedCategory(category.id)
-                          loadDocuments()
-                        }}
+                        onClick={() => setSelectedCategory(category.id)}
                         className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedCategory === category.id
                           ? "bg-blue-100 text-blue-700"
                           : "hover:bg-gray-100 text-gray-700"
@@ -247,6 +248,49 @@ export default function DocumentsPage() {
                   })}
                 </CardContent>
               </Card>
+
+              {/* Agent分类列表 */}
+              {agents.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardDescription>Agent 分类</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    <button
+                      onClick={() => setSelectedAgent("all")}
+                      className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedAgent === "all"
+                        ? "bg-blue-100 text-blue-700"
+                        : "hover:bg-gray-100 text-gray-700"
+                        }`}
+                    >
+                      👥 全部 Agent
+                    </button>
+
+                    {agents.map((agent) => {
+                      const count = data!.documents.filter(d => d.author === agent.name).length
+                      return (
+                        <button
+                          key={agent.name}
+                          onClick={() => setSelectedAgent(agent.name)}
+                          className={`w-full text-left px-3 py-2 rounded-md text-sm transition-colors ${selectedAgent === agent.name
+                            ? "bg-blue-100 text-blue-700"
+                            : "hover:bg-gray-100 text-gray-700"
+                            }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span>
+                              {agent.emoji} {agent.name}
+                            </span>
+                            <Badge variant="secondary" className="text-xs">
+                              {count}
+                            </Badge>
+                          </div>
+                        </button>
+                      )
+                    })}
+                  </CardContent>
+                </Card>
+              )}
 
               {/* 统计信息 */}
               <Card>
@@ -403,74 +447,60 @@ function DocumentCard({ doc, onPreview, onDownload }: DocumentCardProps) {
   }
 
   return (
-    <Card className="group hover:shadow-md transition-all duration-200 hover:-translate-y-1 border-gray-200">
-      <CardHeader className="pb-3">
-        <div className="flex items-start gap-3">
-          {/* 文件图标 */}
-          <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center text-xl shrink-0">
-            {typeIcon}
-          </div>
+    <Card className="group hover:shadow-md transition-all duration-200 hover:-translate-y-0.5 border-gray-200">
+      <div className="p-3 flex items-center gap-3">
+        {/* 文件图标 */}
+        <div className="w-8 h-8 rounded-md bg-gray-100 flex items-center justify-center text-sm shrink-0">
+          {typeIcon}
+        </div>
 
-          {/* 文件信息 */}
-          <div className="flex-1 min-w-0">
-            <h3 className="font-medium text-sm text-gray-900 truncate group-hover:text-blue-600 transition-colors">
+        {/* 核心信息 */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center justify-between">
+            <h3 className="font-medium text-xs text-gray-900 truncate group-hover:text-blue-600 transition-colors">
               {doc.name}
             </h3>
-            <p className="text-xs text-gray-500 line-clamp-2 mt-1">
-              {doc.description}
-            </p>
+            {/* 时间靠右靠上 */}
+            <div className="flex items-center gap-1 text-[10px] text-gray-400 shrink-0 ml-2">
+              <Clock className="h-2.5 w-2.5" />
+              <span>{formatRelativeTime(doc.updatedAt)}</span>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-3 mt-1 text-[10px] text-gray-500 truncate">
+            {/* 作者 */}
+            <div className="flex items-center gap-1 shrink-0">
+              <User className="h-2.5 w-2.5" />
+              <span>{doc.authorEmoji || "🤖"} {doc.author}</span>
+            </div>
+            {/* 大小 */}
+            <div className="flex items-center gap-1 shrink-0">
+              <HardDrive className="h-2.5 w-2.5" />
+              <span>{doc.sizeHuman}</span>
+            </div>
+            {/* 描述 - 浅色截断 */}
+            <span className="truncate text-gray-400 hidden sm:inline-block">- {doc.description}</span>
           </div>
         </div>
-      </CardHeader>
 
-      <CardContent className="space-y-3">
-        {/* 作者 + 时间 */}
-        <div className="flex items-center justify-between text-xs text-gray-500">
-          <div className="flex items-center gap-1">
-            <User className="h-3 w-3" />
-            <span>{doc.authorEmoji || "🤖"} {doc.author}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <Clock className="h-3 w-3" />
-            <span>{formatRelativeTime(doc.updatedAt)}</span>
-          </div>
+        {/* 操作按钮 (极简图标) */}
+        <div className="flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => onPreview(doc)}
+            className="p-1.5 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
+            title="预览"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => onDownload(doc)}
+            className="p-1.5 text-gray-400 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
+            title="下载"
+          >
+            <Download className="h-3.5 w-3.5" />
+          </button>
         </div>
-
-        {/* Tags */}
-        {doc.tags && doc.tags.length > 0 && (
-          <div className="flex flex-wrap gap-1">
-            {doc.tags.map((tag, i) => (
-              <Badge key={i} variant="secondary" className="text-xs">
-                {tag}
-              </Badge>
-            ))}
-          </div>
-        )}
-
-        {/* 底部操作栏 */}
-        <div className="flex items-center justify-between pt-3 border-t">
-          <div className="flex items-center gap-1 text-xs text-gray-500">
-            <HardDrive className="h-3 w-3" />
-            <span>{doc.sizeHuman}</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => onPreview(doc)}
-              className="flex items-center gap-1 text-xs px-2 py-1 text-gray-600 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors"
-            >
-              <Eye className="h-3 w-3" />
-              预览
-            </button>
-            <button
-              onClick={() => onDownload(doc)}
-              className="flex items-center gap-1 text-xs px-2 py-1 text-gray-600 hover:text-green-600 hover:bg-green-50 rounded transition-colors"
-            >
-              <Download className="h-3 w-3" />
-              下载
-            </button>
-          </div>
-        </div>
-      </CardContent>
+      </div>
     </Card>
   )
 }

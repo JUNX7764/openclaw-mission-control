@@ -1,50 +1,58 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readFile } from "fs/promises";
-import { join } from "path";
+import { readFile, stat } from "fs/promises";
+import { basename, extname } from "path";
 
 export const dynamic = "force-dynamic";
 
 const HOME_DIR = process.env.HOME || "~";
-const DOCUMENTS_JSON_PATH = join(HOME_DIR, ".openclaw/workspace/mission-control/data/documents.json");
-const DOCS_ROOT = join(HOME_DIR, ".openclaw/workspace/mission-control/docs");
+const SCAN_ROOT = `${HOME_DIR}/.openclaw`;
+
+function decodeId(id: string): string {
+    return Buffer.from(id, "base64url").toString("utf-8");
+}
 
 export async function GET(
     request: NextRequest,
-    { params }: { params: Promise<{ id: string }> } // Next.js 15+ promise signature
+    { params }: { params: Promise<{ id: string }> }
 ) {
     try {
         const { id } = await params;
+        const filePath = decodeId(id);
 
-        // 1. Read metadata from JSON
-        const jsonContent = await readFile(DOCUMENTS_JSON_PATH, "utf-8");
-        const data = JSON.parse(jsonContent);
-        const docMeta = data.documents.find((d: any) => d.id === id);
-
-        if (!docMeta) {
-            return NextResponse.json({ success: false, error: "Document not found." }, { status: 404 });
+        // Security: ensure the resolved path is within the allowed scan root
+        if (!filePath.startsWith(SCAN_ROOT)) {
+            return NextResponse.json({ success: false, error: "Access denied." }, { status: 403 });
         }
 
-        // 2. Read actual physical file text for Preview
-        const physicalPath = join(DOCS_ROOT, docMeta.category, docMeta.name);
-        let rawContent = "";
-
+        let fileStats;
         try {
-            if (docMeta.type === "markdown" || docMeta.type === "doc" || docMeta.name.endsWith(".md") || docMeta.name.endsWith(".txt")) {
-                rawContent = await readFile(physicalPath, "utf-8");
-            } else {
-                rawContent = `[Binary Content - Preview not supported for ${docMeta.type} format]`;
-            }
-        } catch (fsError) {
-            console.warn(`[API] Physical file missing for ${docMeta.name}`, fsError);
-            rawContent = "[File Read Error: physical file could not be found or loaded]";
+            fileStats = await stat(filePath);
+        } catch {
+            return NextResponse.json({ success: false, error: "File not found." }, { status: 404 });
+        }
+
+        const ext = extname(filePath).toLowerCase().slice(1);
+        const name = basename(filePath);
+
+        let content = "";
+        if (ext === "md" || ext === "txt") {
+            content = await readFile(filePath, "utf-8");
+        } else if (ext === "pdf") {
+            content = `[PDF 文件，请使用「下载」按钮获取原始文件]`;
+        } else {
+            content = `[二进制文件，不支持预览]`;
         }
 
         return NextResponse.json({
             success: true,
             data: {
-                ...docMeta,
-                content: rawContent
-            }
+                id,
+                name,
+                path: filePath,
+                size: fileStats.size,
+                updatedAt: fileStats.mtime.toISOString(),
+                content,
+            },
         });
     } catch (error) {
         console.error("Failed to fetch document preview:", error);
