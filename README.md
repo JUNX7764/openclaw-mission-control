@@ -1,6 +1,7 @@
 # Mission Control - OpenClaw 任务控制中心
 
 > 把 OpenClaw 当做数字团队管理
+> 解压文件夹放到 ~/.openclaw/workspace/mission-control
 
 ## 🎯 项目目标
 
